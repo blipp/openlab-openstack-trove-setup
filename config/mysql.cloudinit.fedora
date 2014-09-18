@@ -1,0 +1,26 @@
+#cloud-config
+runcmd:
+- yum install -y http://rdo.fedorapeople.org/rdo-release.rpm
+
+packages:
+- openstack-trove-guestagent
+- community-mysql-server
+
+# config file for trove guestagent
+runcmd:
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_host HOST_IP
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_password guest
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_user admin
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_pass ADMIN_PASS
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_tenant_name trove
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT trove_auth_url http://HOST_IP:35357/v2.0
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT swift_url http://HOST_IP:8080/v1/AUTH_
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT log_dir /var/log/trove
+- openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT log_file trove.log
+
+ssh_authorized_keys:
+- SSH_KEY
+# restart trove-guestagent as the config has been changed
+runcmd:
+- systemctl stop openstack-trove-guestagent
+- systemctl start openstack-trove-guestagent

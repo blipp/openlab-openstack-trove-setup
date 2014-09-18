@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Directory where output of keystone, nova, neutron, … will be stored
+# these files will be parsed to extract IDs
+OUTPUT_DIR=output
+
+# Passwords will be appended to this file using >>
+PASSWORD_FILE=/root/passwords
+
+# Keystone RC files to be created
+#  the first one will be created by Packstack,
+#  the other two by the script
+RC_ADMIN=/root/keystonerc_admin
+RC_RDOTEST=/root/keystonerc_rdotest
+RC_TROVE=/root/keystonerc_trove
+
+# CirrOS image file, must be in qcow2 format
+# You have to provide this image!
+CIRROS_IMAGE_FILE=/root/cirros.qcow2
+
+# IP of the allinone host
+HOST_IP=
+
+# These two passwords will be generated
+# by Packstack, so change this after
+# the Packstack run 
+MYSQL_ROOT_PASSWD=blank
+ADMIN_PASS=blank
+
+# URL where an Ubuntu cloudinit enabled image can be downloaded
+UBUNTU_IMAGE_URL=http://cloud-images.ubuntu.com/trusty/current/trusty-server-cloudimg-arm64-disk1.img
+# directory in which to download the image
+IMAGE_DIR=/root/images

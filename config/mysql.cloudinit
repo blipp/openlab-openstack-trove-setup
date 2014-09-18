@@ -1,0 +1,24 @@
+#cloud-config
+packages:
+- trove-guestagent
+- mysql-server-5.5
+
+# config file for trove guestagent
+write_files:
+- path: /etc/trove/trove-guestagent.conf
+  content: |
+    rabbit_host = HOST_IP
+    rabbit_password = guest
+    nova_proxy_admin_user = admin
+    nova_proxy_admin_pass = ADMIN_PASS
+    nova_proxy_admin_tenant_name = trove
+    trove_auth_url = http://HOST_IP:35357/v2.0
+    control_exchange = trove
+
+ssh_authorized_keys:
+- SSH_KEY
+
+# restart trove-guestagent as the config has been changed
+runcmd:
+- stop trove-guestagent
+- start trove-guestagent

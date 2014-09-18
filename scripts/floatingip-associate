@@ -1,0 +1,13 @@
+#!/bin/bash
+# helper script to associate a floating IP to an instance
+# 
+# ID of the instance has to be provided
+# name of external network is hard coded with "extnet"
+# has to be executed as OpenStack user with admin rights
+# 
+VM_ID=$1
+PORT_ID=$(neutron port-list --device_id $1 | grep "subnet_id" | awk "{print \$2}")
+echo $PORT_ID
+FLOATINGIP_ID=$(neutron floatingip-create extnet | grep " id " | awk "{print \$4}")
+echo $FLOATING_IP
+neutron floatingip-associate $FLOATINGIP_ID $PORT_ID

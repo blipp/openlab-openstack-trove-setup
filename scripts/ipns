@@ -1,0 +1,6 @@
+#!/bin/bash
+# executes command within a certain network namespace
+# 
+# change the network namespace to your needs
+#
+ip netns exec qrouter-8f9c4e18-2306-41c6-8f34-03fee14c7aeb $@
