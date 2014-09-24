@@ -66,6 +66,7 @@
 #       to use other images than Ubuntu
 # TODO: install Trove from Github repos instead of from the
 #       package repositories
+# TODO: switch from openstack-config to crudini
 
 
 # to see what happens
@@ -348,20 +349,23 @@ function configure_trove {
 
 	. $RC_ADMIN
 
-	# Create user and tenant
+	# generate passwords
+	# Trove's Keystone user
 	TROVE_PASS=$(pwgen 15 1)
 	echo "trove" >> $PASSWORD_FILE
 	echo $TROVE_PASS >> $PASSWORD_FILE
-	keystone user-create --name=trove --pass=$TROVE_PASS --email=trove@localhost --tenant=services| log_output user-create-trove-services
-	keystone user-role-add --user=trove --tenant=services --role=admin | log_output user-role-add-trove-services
- 
-       # Create RC file for rdotest
-        cat $RC_ADMIN | sed -e 's/admin/trove/g' -e "s/OS_TENANT_NAME=trove/OS_TENANT_NAME=services/g" -e "s/^export OS_PASSWORD.*/export OS_PASSWORD=$TROVE_PASS/" | tee $RC_TROVE
-
-	# generate password for Trove's MySQL user
+	# Trove's MySQL user
 	TROVE_MYSQL_PASS=$(pwgen 15 1)
 	echo "mysql: trove" >> $PASSWORD_FILE
 	echo $TROVE_MYSQL_PASS >> $PASSWORD_FILE
+
+	# Create user and tenant
+	keystone user-create --name=trove --pass=$TROVE_PASS --email=trove@localhost --tenant=services | log_output user-create-trove-services
+	keystone user-role-add --user=trove --tenant=services --role=admin | log_output user-role-add-trove-services
+ 
+       # Create RC file for trove. Is this even needed?
+        cat $RC_ADMIN | sed -e 's/admin/trove/g' -e "s/OS_TENANT_NAME=trove/OS_TENANT_NAME=services/g" -e "s/^export OS_PASSWORD.*/export OS_PASSWORD=$TROVE_PASS/" | tee $RC_TROVE
+
 	
 	# make sure files exist and fix permissions
 	mkdir /etc/trove
@@ -371,6 +375,24 @@ function configure_trove {
 	chown -R root:trove /etc/trove
 
 	# fill configuration files
+
+	# enhanced logging to simplify debugging
+	for config_file in trove.conf trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
+		openstack-config --set /etc/trove/$config_file DEFAULT verbose True
+		openstack-config --set /etc/trove/$config_file DEFAULT debug True
+	done
+
+	# put credentials in all config files
+	# maybe this is not needed for api-paste.ini
+	for config_file in api-paste.ini trove.conf trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
+		openstack-config --set /etc/trove/$config_file keystone_authtoken auth_uri http://$HOST_IP:35357/
+		openstack-config --set /etc/trove/$config_file keystone_authtoken identity_uri http://$HOST_IP:35357/
+		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_password $TROVE_PASS
+		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_user trove
+		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_tenant_name services
+	done
+
+	# basic settings for all Trove services
 	for config_file in trove.conf trove-taskmanager.conf trove-conductor.conf; do
 		openstack-config --set /etc/trove/$config_file DEFAULT log_dir /var/log/trove
 		openstack-config --set /etc/trove/$config_file DEFAULT trove_auth_url http://$HOST_IP:5000/v2.0
@@ -385,19 +407,7 @@ function configure_trove {
 		openstack-config --set /etc/trove/$config_file DEFAULT rabbit_password guest
 	done
 
-	for config_file in trove.conf trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
-		openstack-config --set /etc/trove/$config_file DEFAULT verbose True
-		openstack-config --set /etc/trove/$config_file DEFAULT debug True
-	done
-
-	for config_file in api-paste.ini trove.conf trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
-		openstack-config --set /etc/trove/$config_file keystone_authtoken auth_uri http://$HOST_IP:35357/
-		openstack-config --set /etc/trove/$config_file keystone_authtoken identity_uri http://$HOST_IP:35357/
-		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_password $TROVE_PASS
-		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_user trove
-		openstack-config --set /etc/trove/$config_file keystone_authtoken admin_tenant_name services
-	done
-
+	# settings for api-paste.ini
 	openstack-config --set /etc/trove/api-paste.ini filter:authtoken auth_uri http://$HOST_IP:35357/
 	openstack-config --set /etc/trove/api-paste.ini filter:authtoken identity_uri http://$HOST_IP:35357/
 	openstack-config --set /etc/trove/api-paste.ini filter:authtoken admin_user trove
@@ -406,23 +416,30 @@ function configure_trove {
 	openstack-config --set /etc/trove/api-paste.ini filter:authtoken admin_tenant_name services
 	openstack-config --set /etc/trove/api-paste.ini filter:authtoken signing_dir /var/cache/trove
 	
+	# settings for trove.conf
 	openstack-config --set /etc/trove/trove.conf DEFAULT default_datastore mysql
 	openstack-config --set /etc/trove/trove.conf DEFAULT add_addresses True
 	openstack-config --set /etc/trove/trove.conf DEFAULT network_label_regex "^NETWORK_LABEL$"
 	
-	for config_file in trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
+	# nova credentials for all Trove services talking to Nova
+	# is this needed for the Guestagent? Does it talk to Nova?
+	#for config_file in trove-taskmanager.conf trove-conductor.conf trove-guestagent.conf; do
+	for config_file in trove-taskmanager.conf; do
 		openstack-config --set /etc/trove/$config_file DEFAULT nova_proxy_admin_user admin
 		openstack-config --set /etc/trove/$config_file DEFAULT nova_proxy_admin_pass $ADMIN_PASS
 		openstack-config --set /etc/trove/$config_file DEFAULT nova_proxy_admin_tenant_name services
 	done
 
+	# settings for Trove Conductor
 	openstack-config --set /etc/trove/trove-conductor.conf DEFAULT control_exchange trove
 
+	# settings for Trove Guestagents
 	openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_host $HOST_IP
 	openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_password guest
 	openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT trove_auth_url http://$HOST_IP:5000/v2.0
 	openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT control_exchange trove
 
+	# settings for Trove Taskmanager
 	openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT cloudinit_location /etc/trove/cloudinit
 	openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT taskmanager_manager trove.taskmanager.manager.Manager
 	
@@ -435,7 +452,7 @@ function configure_trove {
 	wget -O $IMAGE_DIR/ubuntu.img $UBUNTU_IMAGE_URL
 	qemu-img convert -O qcow2 $IMAGE_DIR/ubuntu.img $IMAGE_DIR/ubuntu.qcow2
 
-	# create the cloudinit config file
+	# create the CloudInit config file
 	sed -e "s/HOST_IP/$HOST_IP/g" -e "s/ADMIN_PASS/$ADMIN_PASS/g" -e "s|SSH_KEY|$(cat /root/.ssh/id_rsa.pub)|g" config/mysql.cloudinit > /etc/trove/cloudinit/mysql.cloudinit
 
 	# upload the image to Glance
@@ -498,3 +515,4 @@ function remove_configuration_trove {
 # Execute function the user passes
 #
 "$@"
+
